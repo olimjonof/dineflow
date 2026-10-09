@@ -1,5 +1,6 @@
 package com.dineflow.domain.entity;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -14,35 +15,44 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id")
+    private Long tenantId;
+
     private String name;
 
+    @Column(unique = true)
     private String email;
 
-    public User() {
+    @Column(name = "password_hash")
+    private String passwordHash;
+
+    protected User() {
     }
 
-    public User(String name, String email) {
+    public User(Long tenantId, String name, String email, String passwordHash) {
+        this.tenantId = tenantId;
         this.name = name;
         this.email = email;
+        this.passwordHash = passwordHash;
     }
 
     public Long getId() {
         return id;
     }
 
-    public String getName() {
-        return name;
+    public Long getTenantId() {
+        return tenantId;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public String getName() {
+        return name;
     }
 
     public String getEmail() {
         return email;
     }
 
-    public void setEmail(String email) {
-        this.email = email;
+    public String getPasswordHash() {
+        return passwordHash;
     }
 }

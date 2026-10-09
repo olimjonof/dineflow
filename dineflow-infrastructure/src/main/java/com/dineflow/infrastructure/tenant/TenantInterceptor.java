@@ -1,48 +1,40 @@
 package com.dineflow.infrastructure.tenant;
 
-
+import com.dineflow.infrastructure.security.JwtTokenIssuer;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+/**
+ * Puts the tenant of the authenticated user into {@link TenantContext}.
+ * The tenant comes only from the verified JWT, never from a client-supplied header or body.
+ */
 @Component
-public class TenantInterceptor implements HandlerInterceptor{
-
-    private final TenantFilterService tenantFilterService;
-
-    public TenantInterceptor(TenantFilterService tenantFilterService) {
-        this.tenantFilterService = tenantFilterService;
-    }
-
+public class TenantInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(
             HttpServletRequest request,
             HttpServletResponse response,
             Object handler
-    ){
+    ) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        String tenantIdHeader = request.getHeader("X-Tenant-Id");
-
-        if (tenantIdHeader == null || tenantIdHeader.isBlank()) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            return false;
+        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+            Long tenantId = jwt.getClaim(JwtTokenIssuer.TENANT_CLAIM);
+            if (tenantId != null) {
+                TenantContext.setTenantId(tenantId);
+                return true;
+            }
         }
 
-        try {
-            Long tenantId = Long.parseLong(tenantIdHeader);
-
-            TenantContext.setTenantId(tenantId);
-
-            return true;
-
-        } catch (NumberFormatException e) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            return false;
-        }
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        return false;
     }
-
 
     @Override
     public void afterCompletion(
@@ -53,5 +45,4 @@ public class TenantInterceptor implements HandlerInterceptor{
     ) {
         TenantContext.clear();
     }
-
 }

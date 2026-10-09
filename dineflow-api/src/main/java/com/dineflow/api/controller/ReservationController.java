@@ -3,9 +3,13 @@ package com.dineflow.api.controller;
 import com.dineflow.application.service.ReservationService;
 import com.dineflow.domain.entity.Reservation;
 import com.dineflow.domain.enums.ReservationStatus;
+import com.dineflow.infrastructure.security.JwtTokenIssuer;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+
 @RestController
 @RequestMapping("/api/v1/reservations")
 public class ReservationController {
@@ -17,10 +21,14 @@ public class ReservationController {
     }
 
     @PostMapping
-    public Reservation createReservation(@RequestBody ReservationRequest request) {
+    public Reservation createReservation(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestBody ReservationRequest request
+    ) {
+        Long tenantId = jwt.getClaim(JwtTokenIssuer.TENANT_CLAIM);
 
         return reservationService.createReservation(
-                request.tenantId(),
+                tenantId,
                 request.restaurantId(),
                 request.tableId(),
                 request.customerId(),
@@ -31,7 +39,6 @@ public class ReservationController {
     }
 
     public record ReservationRequest(
-            Long tenantId,
             Long restaurantId,
             Long tableId,
             Long customerId,
