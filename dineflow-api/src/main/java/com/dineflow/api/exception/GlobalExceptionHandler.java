@@ -2,6 +2,7 @@ package com.dineflow.api.exception;
 
 import com.dineflow.application.exception.AuthenticationFailedException;
 import com.dineflow.application.exception.ConflictException;
+import com.dineflow.application.exception.NotFoundException;
 import jakarta.persistence.OptimisticLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<String> handleConflict(ConflictException ex) {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
+                .body(ex.getMessage());
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<String> handleNotFound(NotFoundException ex) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
                 .body(ex.getMessage());
     }
 

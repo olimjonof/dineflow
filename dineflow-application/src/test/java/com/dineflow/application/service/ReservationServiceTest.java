@@ -1,9 +1,12 @@
 package com.dineflow.application.service;
 
 import com.dineflow.application.exception.ConflictException;
+import com.dineflow.application.exception.NotFoundException;
 import com.dineflow.application.port.EventPayloadSerializer;
+import com.dineflow.application.port.DiningTableRepositoryPort;
 import com.dineflow.application.port.OutboxRepositoryPort;
 import com.dineflow.application.port.ReservationRepositoryPort;
+import com.dineflow.application.port.RestaurantRepositoryPort;
 import com.dineflow.domain.entity.OutboxEvent;
 import com.dineflow.domain.entity.Reservation;
 import com.dineflow.domain.enums.OutboxStatus;
@@ -36,36 +39,54 @@ class ReservationServiceTest {
     private OutboxRepositoryPort outboxRepository;
     @Mock
     private EventPayloadSerializer serializer;
+    @Mock
+    private RestaurantRepositoryPort restaurantRepository;
+    @Mock
+    private DiningTableRepositoryPort tableRepository;
 
     private ReservationService service;
 
     @BeforeEach
     void setUp() {
-        service = new ReservationService(reservationRepository, outboxRepository, serializer);
+        service = new ReservationService(
+                reservationRepository, outboxRepository, serializer, restaurantRepository, tableRepository);
+    }
+
+    /** Restaurant 2 and table 3 belong to tenant 1. */
+    private void ownResourcesExist() {
+        when(restaurantRepository.existsByIdAndTenantId(2L, 1L)).thenReturn(true);
+        when(tableRepository.existsByIdAndTenantIdAndRestaurantId(3L, 1L, 2L)).thenReturn(true);
     }
 
     @Test
     void rejectsEndTimeNotAfterStartTime() {
+        ownResourcesExist();
+
         assertThrows(IllegalArgumentException.class, () ->
-                service.createReservation(1L, 1L, 1L, 1L, START, START, ReservationStatus.CONFIRMED));
+                service.createReservation(1L, 2L, 3L, 4L, START, START, ReservationStatus.CONFIRMED));
 
         verify(reservationRepository, never()).save(any());
     }
 
     @Test
     void rejectsMissingTimes() {
+        ownResourcesExist();
+
         assertThrows(IllegalArgumentException.class, () ->
-                service.createReservation(1L, 1L, 1L, 1L, null, END, ReservationStatus.CONFIRMED));
+                service.createReservation(1L, 2L, 3L, 4L, null, END, ReservationStatus.CONFIRMED));
     }
 
     @Test
     void rejectsMissingStatus() {
+        ownResourcesExist();
+
         assertThrows(IllegalArgumentException.class, () ->
-                service.createReservation(1L, 1L, 1L, 1L, START, END, null));
+                service.createReservation(1L, 2L, 3L, 4L, START, END, null));
     }
 
     @Test
     void throwsConflictWhenTableAlreadyReserved() {
+        ownResourcesExist();
         when(reservationRepository.existsOverlappingReservation(
                 1L, 2L, 3L, START, END, ReservationStatus.CONFIRMED)).thenReturn(true);
 
@@ -78,6 +99,7 @@ class ReservationServiceTest {
 
     @Test
     void savesReservationAndWritesPendingOutboxEvent() {
+        ownResourcesExist();
         when(reservationRepository.existsOverlappingReservation(
                 1L, 2L, 3L, START, END, ReservationStatus.CONFIRMED)).thenReturn(false);
         when(reservationRepository.save(any(Reservation.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -93,5 +115,35 @@ class ReservationServiceTest {
         verify(outboxRepository).save(captor.capture());
         assertEquals(OutboxStatus.PENDING, captor.getValue().getStatus());
         assertEquals("RESERVATION_CREATED", captor.getValue().getType());
+    }
+
+    @Test
+    void rejectsRestaurantOfAnotherTenant() {
+        when(restaurantRepository.existsByIdAndTenantId(2L, 1L)).thenReturn(false);
+
+        assertThrows(NotFoundException.class, () ->
+                service.createReservation(1L, 2L, 3L, 4L, START, END, ReservationStatus.CONFIRMED));
+
+        verify(reservationRepository, never()).save(any());
+        verify(outboxRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsTableOfAnotherTenantOrRestaurant() {
+        when(restaurantRepository.existsByIdAndTenantId(2L, 1L)).thenReturn(true);
+        when(tableRepository.existsByIdAndTenantIdAndRestaurantId(3L, 1L, 2L)).thenReturn(false);
+
+        assertThrows(NotFoundException.class, () ->
+                service.createReservation(1L, 2L, 3L, 4L, START, END, ReservationStatus.CONFIRMED));
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsMissingRestaurantOrTable() {
+        assertThrows(IllegalArgumentException.class, () ->
+                service.createReservation(1L, null, 3L, 4L, START, END, ReservationStatus.CONFIRMED));
+        assertThrows(IllegalArgumentException.class, () ->
+                service.createReservation(1L, 2L, null, 4L, START, END, ReservationStatus.CONFIRMED));
     }
 }

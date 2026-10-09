@@ -28,7 +28,7 @@ Dependencies point inwards: `api` and `infrastructure` depend on `application`, 
 
 * **Hexagonal Architecture:** the application layer only knows ports (`ReservationRepositoryPort`, `OutboxRepositoryPort`, `MessagePublisher`), so persistence and messaging can be swapped without touching business logic.
 * **Transactional Outbox:** a reservation and its `RESERVATION_CREATED` event are saved in the same transaction. `OutboxScheduler` publishes pending events every 5 seconds, so an event is never lost if the broker is down.
-* **Multi-tenancy:** the tenant id is a claim (`tenant_id`) inside the signed JWT. `TenantInterceptor` copies it into a `ThreadLocal` (`TenantContext`) and clears it after the request. The tenant is never taken from a header or request body, so a caller cannot act as another tenant.
+* **Multi-tenancy:** the tenant id is a claim (`tenant_id`) inside the signed JWT. `TenantInterceptor` copies it into a `ThreadLocal` (`TenantContext`) and clears it after the request. The tenant is never taken from a header or request body, so a caller cannot act as another tenant. `ReservationService` also verifies that the restaurant and table belong to that tenant (a foreign id returns `404`, so other tenants' data is not revealed).
 * **Authentication:** stateless JWT (HS256) with Spring Security's resource server. Passwords are hashed with BCrypt. Token issuing and password hashing sit behind ports (`TokenIssuer`, `PasswordHasher`), so the application layer stays framework-free.
 * **Double-booking protection:** an overlap query rejects reservations that intersect an existing one for the same table; a unique index and optimistic locking (`@Version`) guard against races.
 
@@ -66,7 +66,7 @@ Configuration: `JWT_SECRET` (required), `JWT_EXPIRATION_MINUTES` (default 60).
 
 ## Known limitations / roadmap
 
-* `restaurantId` and `tableId` in a reservation are not yet checked to belong to the caller's tenant.
+* `customerId` in a reservation is not validated against the tenant yet (the customer model is still missing).
 * No roles/permissions, refresh tokens or token revocation yet; there is also no endpoint to add more users to an existing tenant.
 * The `users` table gains `tenant_id` and `password_hash` columns (nullable, so `ddl-auto=update` works on existing data). Flyway migrations are planned.
 * The outbox scheduler is not safe for multiple instances yet (needs `SELECT ... FOR UPDATE SKIP LOCKED`).

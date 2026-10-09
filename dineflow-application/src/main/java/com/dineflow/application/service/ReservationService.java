@@ -2,9 +2,12 @@ package com.dineflow.application.service;
 
 import com.dineflow.application.dto.ReservationCreatedEvent;
 import com.dineflow.application.exception.ConflictException;
+import com.dineflow.application.exception.NotFoundException;
 import com.dineflow.application.port.EventPayloadSerializer;
+import com.dineflow.application.port.DiningTableRepositoryPort;
 import com.dineflow.application.port.OutboxRepositoryPort;
 import com.dineflow.application.port.ReservationRepositoryPort;
+import com.dineflow.application.port.RestaurantRepositoryPort;
 import com.dineflow.domain.entity.OutboxEvent;
 import com.dineflow.domain.entity.Reservation;
 import com.dineflow.domain.enums.OutboxStatus;
@@ -20,12 +23,18 @@ public class ReservationService {
     private final ReservationRepositoryPort reservationRepositoryPort;
     private final OutboxRepositoryPort outboxRepositoryPort;
     private final EventPayloadSerializer eventPayloadSerializer;
+    private final RestaurantRepositoryPort restaurantRepositoryPort;
+    private final DiningTableRepositoryPort diningTableRepositoryPort;
 
     public ReservationService(
             ReservationRepositoryPort reservationRepositoryPort,
             OutboxRepositoryPort outboxRepositoryPort,
-            EventPayloadSerializer eventPayloadSerializer
+            EventPayloadSerializer eventPayloadSerializer,
+            RestaurantRepositoryPort restaurantRepositoryPort,
+            DiningTableRepositoryPort diningTableRepositoryPort
     ) {
+        this.restaurantRepositoryPort = restaurantRepositoryPort;
+        this.diningTableRepositoryPort = diningTableRepositoryPort;
         this.reservationRepositoryPort = reservationRepositoryPort;
         this.outboxRepositoryPort = outboxRepositoryPort;
         this.eventPayloadSerializer = eventPayloadSerializer;
@@ -41,6 +50,22 @@ public class ReservationService {
             LocalDateTime endTime,
             ReservationStatus status
     ) {
+
+        if (restaurantId == null || tableId == null) {
+            throw new IllegalArgumentException(
+                    "Restaurant and table are required."
+            );
+        }
+
+        // Tenant isolation: the restaurant and table must belong to the caller's tenant.
+        // A foreign id is reported as "not found" so other tenants' data is not revealed.
+        if (!restaurantRepositoryPort.existsByIdAndTenantId(restaurantId, tenantId)) {
+            throw new NotFoundException("Restaurant not found.");
+        }
+
+        if (!diningTableRepositoryPort.existsByIdAndTenantIdAndRestaurantId(tableId, tenantId, restaurantId)) {
+            throw new NotFoundException("Table not found.");
+        }
 
         if (startTime == null || endTime == null) {
             throw new IllegalArgumentException(
